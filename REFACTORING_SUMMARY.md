@@ -96,24 +96,36 @@ S001_vowels_NS_20251122_143025.parquet
 - **One-way ANOVA**: Accuracy differences across stimuli
 - All results included in JSON output
 
-#### CRM-Specific:
+#### CRM-Specific Statistics:
 - Adaptive threshold estimation (mean of last 6 reversals)
-- SNR tracking across runs
-- Reversal analysis
+- SNR tracking across runs (mean, median, SD, range)
+- Reversal analysis (total reversals, reversal rate)
+- **Stratified by color** (0-3): Accuracy for Blue, Red, White, Green
+- **Stratified by number** (0-7): Accuracy for numbers 0-7
+- **Stratified by run**: Accuracy and mean SNR per run
+- **Color confusion matrix**: 4x4 matrix showing color confusions
+- **Number confusion matrix**: 8x8 matrix showing number confusions
 
 ### 4. **Automated Visualization Reports**
 
-All experiments automatically generate:
-
+#### Vowels & Consonants (5 plots):
 1. **Accuracy over time** - Running accuracy with overall mean line
 2. **Accuracy by stimulus** - Bar plot showing per-stimulus performance
 3. **Response distribution** - Histogram of response frequencies
 4. **RT distribution** - Reaction time histogram with mean
 5. **Confusion matrix** - Saved as PNG with annotated counts AND CSV data
 
-CRM additional plots:
-- **SNR tracking** - Adaptive track for each run with reversal markers
-- **Multi-run comparison** - Subplot grid showing all runs
+#### CRM (10 comprehensive plots):
+1. **Overall accuracy** - Running accuracy across all trials
+2. **SNR tracking (combined)** - All runs with run boundaries and reversal markers
+3. **SNR per run** - Subplot grid showing each run individually
+4. **Accuracy by color** - Performance for Blue, Red, White, Green
+5. **Accuracy by number** - Performance for numbers 0-7
+6. **Accuracy by run** - Comparison across runs
+7. **Color confusion matrix** - 4x4 heatmap with annotations
+8. **Number confusion matrix** - 8x8 heatmap with annotations
+9. **RT distribution** - Reaction time histogram
+10. **SNR distribution** - SNR histogram
 
 All saved with timestamps for easy organization.
 
@@ -219,7 +231,7 @@ results = consonants_refactored('S001', 64, 'y', 22.0, true);
 
 ## Output Files (Per Session)
 
-For a vowels experiment with subject S001, condition NS, you get:
+### Vowels/Consonants Example (9 files):
 
 ```
 C:/Experiments/Data/S001/
@@ -232,6 +244,25 @@ C:/Experiments/Data/S001/
 ├── S001_vowels_by_stimulus_20251122_143025.png            # Stimulus accuracy
 ├── S001_vowels_responses_20251122_143025.png              # Response distribution
 └── S001_vowels_rt_dist_20251122_143025.png                # RT histogram
+```
+
+### CRM Example (13 files):
+
+```
+C:/Experiments/Data/S001/
+├── S001_CRM_T0_M1-3_20251122_143025.csv                    # Trial data
+├── S001_CRM_T0_M1-3_20251122_143025_summary.json           # Statistics
+├── S001_CRM_T0_M1-3_20251122_143025.parquet                # Parquet format
+├── S001_CRM_T0_M1-3_overall_accuracy_20251122_143025.png   # Overall accuracy
+├── S001_CRM_T0_M1-3_snr_tracking_20251122_143025.png       # SNR combined
+├── S001_CRM_T0_M1-3_snr_per_run_20251122_143025.png        # SNR per run
+├── S001_CRM_T0_M1-3_by_color_20251122_143025.png           # Accuracy by color
+├── S001_CRM_T0_M1-3_by_number_20251122_143025.png          # Accuracy by number
+├── S001_CRM_T0_M1-3_by_run_20251122_143025.png             # Accuracy by run
+├── S001_CRM_T0_M1-3_color_confusion_20251122_143025.png    # Color confusion
+├── S001_CRM_T0_M1-3_number_confusion_20251122_143025.png   # Number confusion
+├── S001_CRM_T0_M1-3_rt_dist_20251122_143025.png            # RT distribution
+└── S001_CRM_T0_M1-3_snr_dist_20251122_143025.png           # SNR distribution
 ```
 
 ---
@@ -307,11 +338,13 @@ confMatrix = summary.statistics.confusion_matrix;
 - `saveConfusionMatrix()` - Save confusion matrix as PNG + CSV
 
 ### Analysis Functions:
-- `computeSummaryStats()` - Comprehensive descriptive statistics
+- `computeSummaryStats()` - Comprehensive descriptive statistics (vowels/consonants)
+- `computeCRMStats()` - CRM-specific statistics with stratification
 - `performStatisticalAnalysis()` - Chi-square, ANOVA tests
 - `computeDPrime()` - Calculate d' from confusion matrix
 - `computeBias()` - Calculate response bias
-- `createVisualizationReport()` - Generate all plots
+- `createVisualizationReport()` - Generate vowels/consonants plots
+- `createCRMVisualizationReport()` - Generate CRM-specific plots
 
 ---
 

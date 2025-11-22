@@ -523,5 +523,281 @@ classdef ExperimentCommon
 
             fprintf('Visualization report saved to: %s\n', outputDir);
         end
+
+        function stats = computeCRMStats(results, nrun)
+            % COMPUTECRMSTATS - CRM-specific comprehensive statistics
+            %
+            % Inputs:
+            %   results - Struct with CRM experiment results
+            %   nrun    - Number of runs
+            %
+            % Returns:
+            %   stats - Struct with CRM-specific statistics
+
+            stats = struct();
+
+            % Overall performance
+            stats.overall_accuracy = mean(results.correct) * 100;
+            stats.total_trials = length(results.correct);
+            stats.total_correct = sum(results.correct);
+            stats.total_incorrect = sum(~results.correct);
+
+            % RT statistics
+            stats.mean_rt = mean(results.rt);
+            stats.median_rt = median(results.rt);
+            stats.std_rt = std(results.rt);
+            stats.min_rt = min(results.rt);
+            stats.max_rt = max(results.rt);
+
+            % RT by correctness
+            correctRTs = results.rt(results.correct == 1);
+            incorrectRTs = results.rt(results.correct == 0);
+            if ~isempty(correctRTs)
+                stats.mean_rt_correct = mean(correctRTs);
+                stats.std_rt_correct = std(correctRTs);
+            end
+            if ~isempty(incorrectRTs)
+                stats.mean_rt_incorrect = mean(incorrectRTs);
+                stats.std_rt_incorrect = std(incorrectRTs);
+            end
+
+            % SNR statistics
+            stats.mean_snr = mean(results.snr);
+            stats.median_snr = median(results.snr);
+            stats.std_snr = std(results.snr);
+            stats.min_snr = min(results.snr);
+            stats.max_snr = max(results.snr);
+
+            % Stratified by color (0-3)
+            stats.accuracy_by_color = zeros(4, 1);
+            stats.count_by_color = zeros(4, 1);
+            for c = 0:3
+                idx = results.target_color == c;
+                stats.count_by_color(c+1) = sum(idx);
+                if stats.count_by_color(c+1) > 0
+                    stats.accuracy_by_color(c+1) = mean(results.correct(idx)) * 100;
+                end
+            end
+
+            % Stratified by number (0-7)
+            stats.accuracy_by_number = zeros(8, 1);
+            stats.count_by_number = zeros(8, 1);
+            for n = 0:7
+                idx = results.target_number == n;
+                stats.count_by_number(n+1) = sum(idx);
+                if stats.count_by_number(n+1) > 0
+                    stats.accuracy_by_number(n+1) = mean(results.correct(idx)) * 100;
+                end
+            end
+
+            % Stratified by run
+            stats.accuracy_by_run = zeros(nrun, 1);
+            stats.mean_snr_by_run = zeros(nrun, 1);
+            stats.trials_by_run = zeros(nrun, 1);
+            for r = 1:nrun
+                idx = results.run == r;
+                stats.trials_by_run(r) = sum(idx);
+                if stats.trials_by_run(r) > 0
+                    stats.accuracy_by_run(r) = mean(results.correct(idx)) * 100;
+                    stats.mean_snr_by_run(r) = mean(results.snr(idx));
+                end
+            end
+
+            % Confusion matrices for color and number
+            stats.color_confusion = zeros(4, 4);
+            stats.number_confusion = zeros(8, 8);
+            for i = 1:length(results.target_color)
+                tc = results.target_color(i) + 1;
+                rc = results.response_color(i) + 1;
+                tn = results.target_number(i) + 1;
+                rn = results.response_number(i) + 1;
+                if tc >= 1 && tc <= 4 && rc >= 1 && rc <= 4
+                    stats.color_confusion(tc, rc) = stats.color_confusion(tc, rc) + 1;
+                end
+                if tn >= 1 && tn <= 8 && rn >= 1 && rn <= 8
+                    stats.number_confusion(tn, rn) = stats.number_confusion(tn, rn) + 1;
+                end
+            end
+
+            % Reversal analysis
+            stats.total_reversals = sum(results.reversal);
+            stats.reversal_rate = stats.total_reversals / stats.total_trials * 100;
+
+            fprintf('\n=== CRM SUMMARY STATISTICS ===\n');
+            fprintf('Overall Accuracy: %.2f%% (%d/%d)\n', stats.overall_accuracy, stats.total_correct, stats.total_trials);
+            fprintf('Mean SNR: %.2f dB (SD = %.2f)\n', stats.mean_snr, stats.std_snr);
+            fprintf('Mean RT: %.3f s (SD = %.3f)\n', stats.mean_rt, stats.std_rt);
+            fprintf('Total Reversals: %d (%.1f%% of trials)\n', stats.total_reversals, stats.reversal_rate);
+            fprintf('===============================\n\n');
+        end
+
+        function createCRMVisualizationReport(results, stats, outputDir, subjID, condition, nrun)
+            % CREATECRMVISUALIZATIONREPORT - Generate comprehensive CRM visualization report
+            %
+            % Creates multiple CRM-specific plots and saves them to output directory
+
+            timestamp = datestr(now, 'yyyymmdd_HHMMSS');
+            colors = {'Blue', 'Red', 'White', 'Green'};
+
+            % 1. Accuracy over time (combined all runs)
+            fig = figure('Visible', 'off', 'Position', [100 100 1200 600]);
+            runningAcc = cumsum(results.correct) ./ (1:length(results.correct))' * 100;
+            plot(1:length(runningAcc), runningAcc, 'b-', 'LineWidth', 2);
+            hold on;
+            plot([1 length(runningAcc)], [stats.overall_accuracy stats.overall_accuracy], 'r--', 'LineWidth', 1.5);
+            xlabel('Trial Number (All Runs)', 'FontSize', 12);
+            ylabel('Accuracy (%)', 'FontSize', 12);
+            title(sprintf('CRM: Running Accuracy - %s', subjID), 'FontSize', 14);
+            legend({'Running Accuracy', 'Overall Mean'}, 'Location', 'best');
+            grid on;
+            ylim([0 100]);
+            saveas(fig, fullfile(outputDir, sprintf('%s_CRM_%s_overall_accuracy_%s.png', subjID, condition, timestamp)));
+            close(fig);
+
+            % 2. SNR over time (combined all runs with run markers)
+            fig = figure('Visible', 'off', 'Position', [100 100 1200 600]);
+            plot(1:length(results.snr), results.snr, 'b-', 'LineWidth', 1.5);
+            hold on;
+
+            % Mark run boundaries
+            runBoundaries = [0];
+            for r = 1:nrun
+                runBoundaries(end+1) = runBoundaries(end) + sum(results.run == r);
+            end
+            for r = 2:nrun
+                plot([runBoundaries(r) runBoundaries(r)], ylim, 'k--', 'LineWidth', 1);
+            end
+
+            % Mark reversals
+            revIdx = find(results.reversal);
+            plot(revIdx, results.snr(revIdx), 'rv', 'MarkerSize', 8, 'MarkerFaceColor', 'r');
+
+            xlabel('Trial Number', 'FontSize', 12);
+            ylabel('SNR (dB)', 'FontSize', 12);
+            title(sprintf('CRM: SNR Tracking (All Runs) - %s', subjID), 'FontSize', 14);
+            legend({'SNR', 'Run Boundaries', 'Reversals'}, 'Location', 'best');
+            grid on;
+            saveas(fig, fullfile(outputDir, sprintf('%s_CRM_%s_snr_tracking_%s.png', subjID, condition, timestamp)));
+            close(fig);
+
+            % 3. Accuracy by color
+            fig = figure('Visible', 'off', 'Position', [100 100 1000 600]);
+            bar(stats.accuracy_by_color);
+            set(gca, 'XTickLabel', colors, 'XTick', 1:4);
+            xlabel('Color', 'FontSize', 12);
+            ylabel('Accuracy (%)', 'FontSize', 12);
+            title(sprintf('CRM: Accuracy by Color - %s', subjID), 'FontSize', 14);
+            ylim([0 100]);
+            grid on;
+            saveas(fig, fullfile(outputDir, sprintf('%s_CRM_%s_by_color_%s.png', subjID, condition, timestamp)));
+            close(fig);
+
+            % 4. Accuracy by number
+            fig = figure('Visible', 'off', 'Position', [100 100 1000 600]);
+            bar(stats.accuracy_by_number);
+            set(gca, 'XTickLabel', arrayfun(@num2str, 0:7, 'UniformOutput', false), 'XTick', 1:8);
+            xlabel('Number', 'FontSize', 12);
+            ylabel('Accuracy (%)', 'FontSize', 12);
+            title(sprintf('CRM: Accuracy by Number - %s', subjID), 'FontSize', 14);
+            ylim([0 100]);
+            grid on;
+            saveas(fig, fullfile(outputDir, sprintf('%s_CRM_%s_by_number_%s.png', subjID, condition, timestamp)));
+            close(fig);
+
+            % 5. Accuracy by run
+            fig = figure('Visible', 'off', 'Position', [100 100 1000 600]);
+            bar(stats.accuracy_by_run);
+            set(gca, 'XTickLabel', arrayfun(@num2str, 1:nrun, 'UniformOutput', false), 'XTick', 1:nrun);
+            xlabel('Run', 'FontSize', 12);
+            ylabel('Accuracy (%)', 'FontSize', 12);
+            title(sprintf('CRM: Accuracy by Run - %s', subjID), 'FontSize', 14);
+            ylim([0 100]);
+            grid on;
+            saveas(fig, fullfile(outputDir, sprintf('%s_CRM_%s_by_run_%s.png', subjID, condition, timestamp)));
+            close(fig);
+
+            % 6. Color confusion matrix
+            fig = figure('Visible', 'off', 'Position', [100 100 800 700]);
+            imagesc(stats.color_confusion);
+            colormap('hot');
+            colorbar;
+            set(gca, 'XTick', 1:4, 'XTickLabel', colors, 'YTick', 1:4, 'YTickLabel', colors, 'FontSize', 10);
+            xlabel('Response Color', 'FontSize', 12, 'FontWeight', 'bold');
+            ylabel('Target Color', 'FontSize', 12, 'FontWeight', 'bold');
+            title(sprintf('CRM: Color Confusion Matrix - %s', subjID), 'FontSize', 14, 'FontWeight', 'bold');
+
+            % Add text annotations
+            for i = 1:4
+                for j = 1:4
+                    if stats.color_confusion(i,j) > 0
+                        textColor = stats.color_confusion(i,j) > max(stats.color_confusion(:))/2;
+                        if textColor
+                            clr = 'black';
+                        else
+                            clr = 'white';
+                        end
+                        text(j, i, sprintf('%d', stats.color_confusion(i,j)), ...
+                            'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle', ...
+                            'Color', clr, 'FontSize', 11, 'FontWeight', 'bold');
+                    end
+                end
+            end
+
+            saveas(fig, fullfile(outputDir, sprintf('%s_CRM_%s_color_confusion_%s.png', subjID, condition, timestamp)));
+            close(fig);
+
+            % 7. Number confusion matrix
+            fig = figure('Visible', 'off', 'Position', [100 100 900 800]);
+            imagesc(stats.number_confusion);
+            colormap('hot');
+            colorbar;
+            numLabels = arrayfun(@num2str, 0:7, 'UniformOutput', false);
+            set(gca, 'XTick', 1:8, 'XTickLabel', numLabels, 'YTick', 1:8, 'YTickLabel', numLabels, 'FontSize', 10);
+            xlabel('Response Number', 'FontSize', 12, 'FontWeight', 'bold');
+            ylabel('Target Number', 'FontSize', 12, 'FontWeight', 'bold');
+            title(sprintf('CRM: Number Confusion Matrix - %s', subjID), 'FontSize', 14, 'FontWeight', 'bold');
+
+            % Add text annotations
+            for i = 1:8
+                for j = 1:8
+                    if stats.number_confusion(i,j) > 0
+                        textColor = stats.number_confusion(i,j) > max(stats.number_confusion(:))/2;
+                        if textColor
+                            clr = 'black';
+                        else
+                            clr = 'white';
+                        end
+                        text(j, i, sprintf('%d', stats.number_confusion(i,j)), ...
+                            'HorizontalAlignment', 'center', 'VerticalAlignment', 'middle', ...
+                            'Color', clr, 'FontSize', 9, 'FontWeight', 'bold');
+                    end
+                end
+            end
+
+            saveas(fig, fullfile(outputDir, sprintf('%s_CRM_%s_number_confusion_%s.png', subjID, condition, timestamp)));
+            close(fig);
+
+            % 8. RT distribution
+            fig = figure('Visible', 'off', 'Position', [100 100 1000 600]);
+            histogram(results.rt, 20, 'FaceColor', 'b', 'EdgeColor', 'k');
+            xlabel('Reaction Time (s)', 'FontSize', 12);
+            ylabel('Count', 'FontSize', 12);
+            title(sprintf('CRM: RT Distribution - %s (Mean=%.2fs)', subjID, stats.mean_rt), 'FontSize', 14);
+            grid on;
+            saveas(fig, fullfile(outputDir, sprintf('%s_CRM_%s_rt_dist_%s.png', subjID, condition, timestamp)));
+            close(fig);
+
+            % 9. SNR distribution
+            fig = figure('Visible', 'off', 'Position', [100 100 1000 600]);
+            histogram(results.snr, 20, 'FaceColor', 'g', 'EdgeColor', 'k');
+            xlabel('SNR (dB)', 'FontSize', 12);
+            ylabel('Count', 'FontSize', 12);
+            title(sprintf('CRM: SNR Distribution - %s (Mean=%.1f dB)', subjID, stats.mean_snr), 'FontSize', 14);
+            grid on;
+            saveas(fig, fullfile(outputDir, sprintf('%s_CRM_%s_snr_dist_%s.png', subjID, condition, timestamp)));
+            close(fig);
+
+            fprintf('CRM visualization report saved to: %s\n', outputDir);
+        end
     end
 end

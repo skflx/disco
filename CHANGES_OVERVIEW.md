@@ -45,16 +45,27 @@ Output per session:
 
 ### 3. 🖼️ Automated Visualizations
 **Before**: Manual post-processing needed
-**After**: 4-8 plots auto-generated per session
+**After**: 5-13 plots auto-generated per session
 
 ```
-Generated plots:
+Vowels/Consonants (5 plots):
 - Accuracy over time
 - Accuracy by stimulus
 - Response distribution
 - RT histogram
 - Confusion matrix (PNG + CSV)
-- [CRM] SNR tracking with reversals
+
+CRM (10 plots):
+- Overall accuracy across all runs
+- SNR tracking (combined with run boundaries)
+- SNR per run (subplot grid)
+- Accuracy by color (Blue/Red/White/Green)
+- Accuracy by number (0-7)
+- Accuracy by run
+- Color confusion matrix (4x4)
+- Number confusion matrix (8x8)
+- RT distribution
+- SNR distribution
 ```
 
 ### 4. 🖥️ Always-Dual-Window UI
@@ -84,10 +95,21 @@ results = vowels9_refactored('TEST', 9, 'y', 18.0, true);
 **After**: Broken down by every variable
 
 ```
-- Accuracy by each stimulus
+Vowels/Consonants:
+- Accuracy by each stimulus (vowel/consonant)
 - Accuracy by each speaker
-- RT by correctness (correct vs incorrect)
+- RT by correctness (correct vs incorrect trials)
 - Response frequency distribution
+
+CRM:
+- Accuracy by color (Blue, Red, White, Green)
+- Accuracy by number (0-7)
+- Accuracy by run
+- Mean SNR by run
+- Color confusion patterns (4x4 matrix)
+- Number confusion patterns (8x8 matrix)
+- RT by correctness
+- Reversal analysis
 ```
 
 ### 7. 📐 Statistical Tests
@@ -126,6 +148,8 @@ S001_vowch.all                 (appended file)
 ```
 
 ### After (v3.0):
+
+**Vowels/Consonants (9 files):**
 ```
 S001_vowels_NS_20251122_143025.csv                   # Trial data
 S001_vowels_NS_20251122_143025_summary.json          # Full stats
@@ -138,6 +162,23 @@ S001_vowels_responses_20251122_143025.png            # Response dist
 S001_vowels_rt_dist_20251122_143025.png              # RT histogram
 ```
 
+**CRM (13 files):**
+```
+S001_CRM_T0_M1-3_20251122_143025.csv                 # Trial data
+S001_CRM_T0_M1-3_20251122_143025_summary.json        # Full stats + SNR data
+S001_CRM_T0_M1-3_20251122_143025.parquet             # Big data format
+S001_CRM_T0_M1-3_overall_accuracy_20251122_143025.png    # Overall accuracy
+S001_CRM_T0_M1-3_snr_tracking_20251122_143025.png        # SNR combined
+S001_CRM_T0_M1-3_snr_per_run_20251122_143025.png         # SNR per run
+S001_CRM_T0_M1-3_by_color_20251122_143025.png            # By color
+S001_CRM_T0_M1-3_by_number_20251122_143025.png           # By number
+S001_CRM_T0_M1-3_by_run_20251122_143025.png              # By run
+S001_CRM_T0_M1-3_color_confusion_20251122_143025.png     # Color confusion
+S001_CRM_T0_M1-3_number_confusion_20251122_143025.png    # Number confusion
+S001_CRM_T0_M1-3_rt_dist_20251122_143025.png             # RT histogram
+S001_CRM_T0_M1-3_snr_dist_20251122_143025.png            # SNR histogram
+```
+
 ---
 
 ## Code Simplification
@@ -148,13 +189,14 @@ S001_vowels_rt_dist_20251122_143025.png              # RT histogram
 |---------|-------|-------------|-------------|
 | v1.0 | ExperimentConfig.m (135)<br>DataLogger.m (178)<br>ExperimentUI.m (390) | 703 lines<br>3 files | Complex |
 | v2.0 | ExperimentCommon.m (152) | 152 lines<br>1 file | Simple |
-| **v3.0** | **ExperimentCommon.m (528)** | **528 lines<br>1 file** | **Comprehensive** |
+| **v3.0** | **ExperimentCommon.m (804)** | **804 lines<br>1 file** | **Comprehensive** |
 
 **v3.0 Note**: More lines than v2.0 because it includes:
-- Statistical analysis functions
-- Visualization generation
+- Statistical analysis functions (both general and CRM-specific)
+- Visualization generation (5 plots for vowels/consonants, 10 for CRM)
 - JSON & Parquet output
-- Summary statistics computation
+- Summary statistics computation with full stratification
+- CRM-specific confusion matrices and SNR analysis
 - Still maintains single-file simplicity!
 
 ---

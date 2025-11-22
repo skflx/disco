@@ -292,12 +292,8 @@ end
 fclose(fid);
 fprintf('\n=== EXPERIMENT COMPLETE ===\n');
 
-% Compute statistics
-overallAcc = mean(results.correct) * 100;
-meanSNR = mean(results.snr);
-stdSNR = std(results.snr);
-meanRT = mean(results.rt);
-stdRT = std(results.rt);
+% Compute comprehensive CRM statistics
+stats = ExperimentCommon.computeCRMStats(results, nrun);
 
 % Compute threshold (mean of last 6 reversals across all runs)
 allReversals = [];
@@ -314,15 +310,12 @@ else
     thresholdSD = NaN;
 end
 
-fprintf('\n=== SUMMARY STATISTICS ===\n');
-fprintf('Overall Accuracy: %.2f%%\n', overallAcc);
-fprintf('Mean SNR: %.2f dB (SD = %.2f)\n', meanSNR, stdSNR);
 fprintf('Threshold (last 6 rev): %.2f dB (SD = %.2f)\n', threshold, thresholdSD);
-fprintf('Mean RT: %.3f s (SD = %.3f)\n', meanRT, stdRT);
-fprintf('==========================\n\n');
 
-%% Create Comprehensive Visualizations
-% SNR tracking plot for all runs
+% Create comprehensive CRM visualization report
+ExperimentCommon.createCRMVisualizationReport(results, stats, outputDir, subjID, condition, nrun);
+
+% Create per-run SNR tracking plot
 fig = figure('Visible', 'off', 'Position', [100 100 1200 800]);
 for r = 1:nrun
     subplot(ceil(nrun/2), 2, r);
@@ -342,19 +335,8 @@ for r = 1:nrun
     grid on;
     legend({'SNR', 'Reversals'}, 'Location', 'best');
 end
-snrPlotPath = fullfile(outputDir, sprintf('%s_CRM_%s_snr_tracking_%s.png', subjID, condition, timestamp));
-saveas(fig, snrPlotPath);
-close(fig);
-
-% RT distribution
-fig = figure('Visible', 'off', 'Position', [100 100 1000 600]);
-histogram(results.rt, 20, 'FaceColor', 'b', 'EdgeColor', 'k');
-xlabel('Reaction Time (s)', 'FontSize', 12);
-ylabel('Count', 'FontSize', 12);
-title(sprintf('CRM RT Distribution - %s (Mean=%.2fs)', subjID, meanRT), 'FontSize', 14);
-grid on;
-rtPlotPath = fullfile(outputDir, sprintf('%s_CRM_%s_rt_dist_%s.png', subjID, condition, timestamp));
-saveas(fig, rtPlotPath);
+snrPerRunPath = fullfile(outputDir, sprintf('%s_CRM_%s_snr_per_run_%s.png', subjID, condition, timestamp));
+saveas(fig, snrPerRunPath);
 close(fig);
 
 %% Save JSON Summary
@@ -371,14 +353,12 @@ summaryData.test_mode = testMode;
 summaryData.attenuation_db = atten;
 summaryData.feedback_enabled = feedbackEnabled;
 
-summaryData.overall_accuracy = overallAcc;
-summaryData.mean_snr = meanSNR;
-summaryData.std_snr = stdSNR;
+% Add comprehensive statistics
+summaryData.statistics = stats;
 summaryData.threshold_db = threshold;
 summaryData.threshold_std = thresholdSD;
-summaryData.mean_rt = meanRT;
-summaryData.std_rt = stdRT;
 
+% Keep run-specific data
 summaryData.run_data = rundata;
 summaryData.run_reversals = runrev;
 
@@ -408,7 +388,7 @@ catch ME
 end
 
 %% Display final summary to tester
-set(hTest.txtStatus, 'String', sprintf('COMPLETE: %.1f%% acc, Threshold: %.1f dB', overallAcc, threshold));
+set(hTest.txtStatus, 'String', sprintf('COMPLETE: %.1f%% acc, Threshold: %.1f dB', stats.overall_accuracy, threshold));
 
 %% Final message to subject
 set(hSubj.txtInstruct, 'String', 'Experiment Complete. Thank you!', 'ForegroundColor', 'white');
@@ -431,11 +411,20 @@ if ishandle(hTest.fig), close(hTest.fig); end
 results.summary = summaryData;
 
 fprintf('\n=== OUTPUT FILES ===\n');
-fprintf('CSV:     %s\n', csvPath);
-fprintf('JSON:    %s\n', jsonPath);
-fprintf('Parquet: %s\n', strrep(csvPath, '.csv', '.parquet'));
-fprintf('SNR Plot: %s\n', snrPlotPath);
-fprintf('RT Plot:  %s\n', rtPlotPath);
-fprintf('====================\n\n');
+fprintf('CSV:                    %s\n', csvPath);
+fprintf('JSON:                   %s\n', jsonPath);
+fprintf('Parquet:                %s\n', strrep(csvPath, '.csv', '.parquet'));
+fprintf('\nVISUALIZATIONS:\n');
+fprintf('Overall Accuracy:       %s_CRM_%s_overall_accuracy_%s.png\n', subjID, condition, timestamp);
+fprintf('SNR Tracking Combined:  %s_CRM_%s_snr_tracking_%s.png\n', subjID, condition, timestamp);
+fprintf('SNR Per Run:            %s\n', snrPerRunPath);
+fprintf('Accuracy by Color:      %s_CRM_%s_by_color_%s.png\n', subjID, condition, timestamp);
+fprintf('Accuracy by Number:     %s_CRM_%s_by_number_%s.png\n', subjID, condition, timestamp);
+fprintf('Accuracy by Run:        %s_CRM_%s_by_run_%s.png\n', subjID, condition, timestamp);
+fprintf('Color Confusion Matrix: %s_CRM_%s_color_confusion_%s.png\n', subjID, condition, timestamp);
+fprintf('Number Confusion Matrix:%s_CRM_%s_number_confusion_%s.png\n', subjID, condition, timestamp);
+fprintf('RT Distribution:        %s_CRM_%s_rt_dist_%s.png\n', subjID, condition, timestamp);
+fprintf('SNR Distribution:       %s_CRM_%s_snr_dist_%s.png\n', subjID, condition, timestamp);
+fprintf('========================================\n\n');
 
 end
