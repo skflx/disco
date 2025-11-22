@@ -1,283 +1,320 @@
-# Quick Reference: What Changed?
+# Quick Reference: What Changed in v3.0?
 
 ## Visual Comparison
 
-### Before (Original Code)
-```
-┌─────────────────────────────────┐
-│  Old ark1.mat GUI               │
-│  ┌───────────────────────────┐  │
-│  │ [Button 1] [Button 2] ... │  │
-│  │                           │  │
-│  │ No visual feedback        │  │
-│  │ No plots                  │  │
-│  │                           │  │
-│  └───────────────────────────┘  │
-└─────────────────────────────────┘
+### Architecture Evolution
 
-Data Output: Custom text format
-├── S001_vow9_L_0.txt
-└── S001_vowch.all
 ```
-
-### After (Refactored Code)
-```
-┌────────────────────────────────────────────────────────────┐
-│  Modern Experiment UI                                      │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │ [Instruction: "Which vowel did you hear?"]          │  │
-│  └──────────────────────────────────────────────────────┘  │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │ Trial: 45/180         Accuracy: 85.6%               │  │
-│  └──────────────────────────────────────────────────────┘  │
-│  ┌────────────────┬────────────────┐                      │
-│  │  Accuracy Plot │ Confusion Mtx  │  Real-time plots!    │
-│  │   📈           │    🔥          │                      │
-│  └────────────────┴────────────────┘                      │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │ [AE] [AH] [AW] [EH] [IH] [IY] [OO] [UH] [UW]       │  │
-│  └──────────────────────────────────────────────────────┘  │
-└────────────────────────────────────────────────────────────┘
-
-Data Output: Standard formats (CSV + JSON)
-├── S001_vowels_L_20250120_143025.csv
-└── S001_vowels_L_20250120_143025_summary.json
+v1.0 (Jan 2025)                v2.0 (Nov 2025)                v3.0 (Nov 2025 - CURRENT)
+├── ExperimentConfig.m         ├── ExperimentCommon.m         ├── ExperimentCommon.m (ENHANCED)
+├── DataLogger.m               │   - All utilities            │   - All utilities
+├── ExperimentUI.m             │   - Dual-window UI           │   - Dual-window UI (always on)
+└── 3 files, 703 lines         └── 1 file, 152 lines         │   - JSON & Parquet output
+                                                              │   - Statistical analysis
+                                                              │   - Auto visualizations
+                                                              │   - Test mode support
+                                                              └── 1 file, 528 lines
 ```
 
 ---
 
-## Code Structure Comparison
+## Top 7 Enhancements (v3.0)
 
-### Before: Monolithic Functions
+### 1. 📊 Multi-Format Data Output
+**Before**: CSV only
+**After**: CSV + JSON + Parquet
+
 ```
-vowels9.m (207 lines)
-├── Parse inputs
-├── Hardcoded paths
-├── Setup PA5 hardware
-├── Load ark1.mat GUI
-├── Wait for response (global shp)
-├── Trial loop
-│   ├── Load audio
-│   ├── Play sound
-│   ├── Get response
-│   ├── Save to custom format
-│   └── Manual button control
-├── Close files
-└── Cleanup
+Output per session:
+├── .csv     - Trial-by-trial data
+├── .json    - Summary stats & metadata
+└── .parquet - Columnar format (Python/R/Spark)
 ```
 
-### After: Modular Components
+### 2. 📈 Comprehensive Statistics
+**Before**: Basic accuracy only
+**After**: Full statistical report
+
 ```
-vowels9_refactored.m (use helper classes)
-├── ExperimentConfig.m      ← Configuration
-├── DataLogger.m            ← Data handling
-├── ExperimentUI.m          ← User interface
-└── vowels9_refactored.m    ← Experiment logic only
-    ├── Initialize config
-    ├── Initialize logger
-    ├── Initialize UI
-    ├── Trial loop
-    │   ├── ui.updateProgress()
-    │   ├── ui.getResponse()
-    │   ├── logger.logTrial()
-    │   └── ui.updatePlots()
-    └── logger.finalize()
+- Descriptive stats (mean, median, SD)
+- Stratified by stimulus, speaker, correctness
+- d-prime & response bias
+- Chi-square & ANOVA tests
+- Confusion matrix analysis
+```
+
+### 3. 🖼️ Automated Visualizations
+**Before**: Manual post-processing needed
+**After**: 4-8 plots auto-generated per session
+
+```
+Generated plots:
+- Accuracy over time
+- Accuracy by stimulus
+- Response distribution
+- RT histogram
+- Confusion matrix (PNG + CSV)
+- [CRM] SNR tracking with reversals
+```
+
+### 4. 🖥️ Always-Dual-Window UI
+**Before**: Single window or inconsistent dual-window
+**After**: ALWAYS renders two windows
+
+```
+Single Monitor:  Split-screen (Tester | Subject)
+Dual Monitor:    Tester Monitor 1 | Subject Monitor 2
+
+Subject window:  Buttons & instructions ONLY (blind to performance)
+Tester window:   Plots, stats, progress tracking
+```
+
+### 5. 🧪 Test Mode
+**Before**: Required hardware to run
+**After**: Full test mode for development
+
+```matlab
+% Run without TDT PA5 hardware
+results = vowels9_refactored('TEST', 9, 'y', 18.0, true);
+%                                                    ^^^^
+```
+
+### 6. 🔢 Stratified Analysis
+**Before**: Overall stats only
+**After**: Broken down by every variable
+
+```
+- Accuracy by each stimulus
+- Accuracy by each speaker
+- RT by correctness (correct vs incorrect)
+- Response frequency distribution
+```
+
+### 7. 📐 Statistical Tests
+**Before**: None
+**After**: Automatic inferential statistics
+
+```
+- Chi-square test (response uniformity)
+- One-way ANOVA (accuracy across stimuli)
+- Results in JSON output
 ```
 
 ---
 
-## Feature Comparison Matrix
+## File Count Comparison
 
-| Feature | Original | Refactored |
-|---------|----------|------------|
-| **UI Framework** | Pre-compiled .mat | Modern uifigure |
-| **Real-time plots** | ❌ None | ✅ Accuracy + Confusion |
-| **Data format** | Custom .txt | CSV + JSON |
-| **Progress tracking** | Text only | Visual + numeric |
-| **Feedback display** | Button flash | Color-coded text |
-| **Error handling** | Minimal | Comprehensive |
-| **Code documentation** | Sparse | Detailed |
-| **Modular design** | ❌ Monolithic | ✅ Separate classes |
-| **Random seed** | Old `rand('state')` | Modern `rng()` |
-| **Path handling** | String concat | `fullfile()` |
-| **Hardware fallback** | ❌ Crashes | ✅ Test mode |
-| **Analysis ready** | ❌ Custom parsing | ✅ Load in any tool |
+| Aspect | Original | v1.0 | v2.0 | v3.0 (Current) |
+|--------|---------|------|------|----------------|
+| Experiment files | 3 | 6 | 6 | 6 |
+| Helper classes | 0 | 3 | 1 | 1 |
+| Total utility lines | 0 | 703 | 152 | 528 |
+| Output formats | 1 (custom) | 2 (CSV+JSON) | 1 (CSV) | 3 (CSV+JSON+Parquet) |
+| Auto plots | 0 | 0 | 0 | 4-8 per session |
+| Statistical tests | 0 | 0 | 0 | 2 (Chi²+ANOVA) |
+| Dual windows | No | No | Yes | Yes (always) |
+| Test mode | No | No | No | Yes |
 
 ---
 
 ## Output File Comparison
 
-### Original Format
+### Before (Original):
 ```
-S001_vow9_L_0.txt:
----
-  1   5   5   1 1.2340
-  2  12   7   6 0 1.5670
-  3   8   3   3 1 0.9870
-...
-(whoSpeakID, whichVowID, answer, score, telapsed)
+S001_vow9_L_0.txt              (custom format, hard to parse)
+S001_vowch.all                 (appended file)
 ```
 
-**Issues:**
-- No column headers
-- No timestamp
-- Hard to parse
-- Not self-documenting
-
-### Refactored Format
-```csv
-trial,timestamp,speaker_id,vowel_id,response_id,correct,rt_sec
-1,2025-01-20 14:30:25.123,5,5,5,1,1.2340
-2,2025-01-20 14:30:28.456,12,7,6,0,1.5670
-3,2025-01-20 14:30:31.234,8,3,3,1,0.9870
+### After (v3.0):
+```
+S001_vowels_NS_20251122_143025.csv                   # Trial data
+S001_vowels_NS_20251122_143025_summary.json          # Full stats
+S001_vowels_NS_20251122_143025.parquet               # Big data format
+S001_vowels_NS_confmatrix_20251122_143025.png        # Confusion heatmap
+S001_vowels_NS_confmatrix_20251122_143025.csv        # Confusion data
+S001_vowels_accuracy_20251122_143025.png             # Accuracy plot
+S001_vowels_by_stimulus_20251122_143025.png          # Per-stimulus
+S001_vowels_responses_20251122_143025.png            # Response dist
+S001_vowels_rt_dist_20251122_143025.png              # RT histogram
 ```
 
-**Benefits:**
-- Standard CSV format
-- Self-documenting headers
-- Timestamps for each trial
-- Works with Excel, Python, R, MATLAB
+---
+
+## Code Simplification
+
+### Helper Files
+
+| Version | Files | Total Lines | Maintenance |
+|---------|-------|-------------|-------------|
+| v1.0 | ExperimentConfig.m (135)<br>DataLogger.m (178)<br>ExperimentUI.m (390) | 703 lines<br>3 files | Complex |
+| v2.0 | ExperimentCommon.m (152) | 152 lines<br>1 file | Simple |
+| **v3.0** | **ExperimentCommon.m (528)** | **528 lines<br>1 file** | **Comprehensive** |
+
+**v3.0 Note**: More lines than v2.0 because it includes:
+- Statistical analysis functions
+- Visualization generation
+- JSON & Parquet output
+- Summary statistics computation
+- Still maintains single-file simplicity!
 
 ---
 
-## Plotting Capabilities
+## Function Signature Changes
 
-### Original: No Plots During Experiment
-Experimenters had to wait until completion to analyze data.
-
-### Refactored: Real-Time Visualization
-
-#### Vowels/Consonants:
-- **Accuracy plot**: See performance trend as experiment runs
-- **Confusion matrix**: Identify problematic stimuli immediately
-- **Progress bar**: Know exactly where you are
-
-#### CRM Adaptive:
-- **SNR track**: Watch adaptive procedure in action
-- **Reversal markers**: See when direction changes
-- **Legend**: Understand what's happening
-
----
-
-## Code Quality Metrics
-
-| Metric | Original (avg) | Refactored |
-|--------|---------------|------------|
-| Lines per function | 207 | 150 (main) + 3 helpers |
-| Global variables | 1 (`shp`) | 0 |
-| Magic numbers | Many | Documented |
-| Comments | ~5% | ~20% |
-| Error handling | Minimal | Comprehensive |
-| Function docs | Basic | Detailed |
-| Testability | Low | High |
-
----
-
-## Memory & Performance
-
-### Original:
-- Creates one-time GUI from .mat file
-- No plotting overhead during experiment
-- Linear performance
-
-### Refactored:
-- Modern UI with more features
-- Plotting updates every N trials (configurable)
-- Slightly more memory for plot data
-- **Performance impact**: Negligible (<50ms per trial)
-
----
-
-## Migration Effort
-
-### For Users:
-- **Minimal**: Just change function name
-- Function signatures identical (except return values enhanced)
-- Can run old and new code side-by-side
-
-### For Analysts:
-- **Low**: CSV format is easier to work with
-- One-time script update to read CSV instead of custom format
-- Bonus: JSON metadata provides context
-
-### For Developers:
-- **Easy**: Helper classes are reusable
-- Well-documented code
-- Modular design makes future changes easier
-
----
-
-## Testing Checklist
-
-- [x] All original functionality preserved
-- [x] Hardware interface maintained (PA5)
-- [x] Same attenuation levels
-- [x] Same stimulus randomization
-- [x] Same audio scaling factors
-- [x] Backward-compatible function signatures
-- [x] Data includes all original fields
-- [x] **Plus**: Real-time plots
-- [x] **Plus**: Better data format
-- [x] **Plus**: Modern UI
-
----
-
-## Quick Start Guide
-
-### 1. Run a test experiment:
+### Vowels & Consonants:
 ```matlab
-% Test with 9 trials (1 per vowel)
-results = vowels9_refactored('TEST', 9, 'y', 18.0);
+% v1.0 & v2.0
+results = vowels9_refactored(subjID, howmany, feedback, atten);
+
+% v3.0 (added testMode)
+results = vowels9_refactored(subjID, howmany, feedback, atten, testMode);
+%                                                             ^^^^^^^^
+% Backward compatible: testMode defaults to false
 ```
 
-### 2. Check the output files:
+### CRM:
 ```matlab
-cd C:/Experiments/Data/TEST/
-dir  % Should see .csv and .json files
+% v1.0 & v2.0
+[rundata, runrev] = CRM_refactored(subjID, talker, maskers, nrun, feedback, atten);
+
+% v3.0 (added testMode + results struct)
+[rundata, runrev, results] = CRM_refactored(subjID, talker, maskers, nrun, feedback, atten, testMode);
+%                 ^^^^^^^^                                                                    ^^^^^^^^
+% Backward compatible: can still use [rundata, runrev] = CRM_refactored(...)
 ```
 
-### 3. Load and analyze:
-```matlab
-data = readtable('TEST_vowels_NS_YYYYMMDD_HHMMSS.csv');
-summary = jsondecode(fileread('TEST_vowels_NS_YYYYMMDD_HHMMSS_summary.json'));
+---
 
-fprintf('Accuracy: %.1f%%\n', summary.overall_accuracy);
-disp(data(1:5, :))  % First 5 trials
+## Feature Matrix
+
+| Feature | Original | v1.0 | v2.0 | v3.0 |
+|---------|---------|------|------|------|
+| **Data Formats** |
+| CSV output | Custom | ✅ | ✅ | ✅ |
+| JSON metadata | ❌ | ✅ | ❌ | ✅ |
+| Parquet format | ❌ | ❌ | ❌ | ✅ |
+| **UI** |
+| Basic GUI | ✅ | ✅ | ✅ | ✅ |
+| Real-time plots | ❌ | ✅ | ✅ | ✅ |
+| Dual-window | ❌ | ❌ | Sometimes | Always |
+| Subject blind | ❌ | ❌ | Sometimes | Always |
+| **Statistics** |
+| Basic accuracy | ✅ | ✅ | ✅ | ✅ |
+| Confusion matrix | ❌ | ✅ | ✅ | ✅ (saved) |
+| d-prime | ❌ | ❌ | ❌ | ✅ |
+| Response bias | ❌ | ❌ | ❌ | ✅ |
+| Chi-square test | ❌ | ❌ | ❌ | ✅ |
+| ANOVA | ❌ | ❌ | ❌ | ✅ |
+| Stratified stats | ❌ | Partial | Partial | Full |
+| **Visualizations** |
+| Auto-generated plots | ❌ | ❌ | ❌ | ✅ |
+| Saved confusion matrix | ❌ | ❌ | ❌ | ✅ |
+| RT histograms | ❌ | ❌ | ❌ | ✅ |
+| SNR tracking (CRM) | ❌ | ❌ | In-UI | Saved |
+| **Development** |
+| Hardware required | ✅ | ✅ | ✅ | ❌ |
+| Test mode | ❌ | ❌ | ❌ | ✅ |
+| **Architecture** |
+| Helper files | 0 | 3 | 1 | 1 |
+| Code complexity | High | Medium | Low | Low |
+
+---
+
+## What Stayed the Same?
+
+✓ Core experiment logic
+✓ Stimulus files & paths
+✓ Hardware interface (PA5)
+✓ Randomization algorithm
+✓ Attenuation levels
+✓ Audio scaling factors
+✓ Trial presentation order
+✓ Response collection
+
+---
+
+## Quick Start Guide (v3.0)
+
+### 1. Run a Test Experiment:
+```matlab
+% Quick 9-trial test with feedback (no hardware needed)
+results = vowels9_refactored('TEST', 9, 'y', 18.0, true);
 ```
 
-### 4. For production use:
+### 2. Run Production Experiment:
 ```matlab
-% Full experiment
-results = vowels9_refactored('S001', 180, 'n', 18.0);
+% Full 180-trial experiment with hardware
+results = vowels9_refactored('S001', 180, 'n', 18.0, false);
+```
 
-% Consonants
-results = consonants_refactored('S001', 64, 'n', 22.0);
+### 3. Check Outputs:
+```matlab
+% Navigate to data folder
+cd C:\Experiments\Data\S001\
 
-% CRM
-[rundata, runrev] = CRM_refactored('S001', 0, [1 3], 'n', 15, 2);
+% List all output files
+dir S001_vowels*
+
+% Load JSON summary
+summary = jsondecode(fileread('S001_vowels_NS_20251122_143025_summary.json'));
+
+% Display key stats
+fprintf('Accuracy: %.1f%%\n', summary.statistics.overall_accuracy);
+fprintf('d-prime: %.2f\n', summary.statistics.d_prime);
+fprintf('Chi-square p-value: %.4f\n', summary.statistical_tests.chi2_pval);
+```
+
+### 4. Analyze in Python:
+```python
+import pandas as pd
+import json
+
+# Load data
+df = pd.read_csv('S001_vowels_NS_20251122_143025.csv')
+# or faster:
+df = pd.read_parquet('S001_vowels_NS_20251122_143025.parquet')
+
+# Load summary
+with open('S001_vowels_NS_20251122_143025_summary.json') as f:
+    summary = json.load(f)
+
+# Quick analysis
+print(f"Accuracy: {summary['statistics']['overall_accuracy']:.1f}%")
+print(f"Mean RT: {df['RT'].mean():.3f}s")
+```
+
+---
+
+## Migration from v2.0 to v3.0
+
+### Code Changes Needed:
+**None!** All changes are backward compatible.
+
+### Optional Enhancements:
+```matlab
+% Add testMode parameter (optional - defaults to false)
+results = vowels9_refactored(subjID, howmany, feedback, atten, true);
+
+% Use enhanced return values
+fprintf('d-prime: %.2f\n', results.summary_statistics.d_prime);
+fprintf('ANOVA p-value: %.4f\n', results.statistical_analysis.anova_p);
 ```
 
 ---
 
 ## Summary
 
-### What Stayed the Same:
-✓ Core experiment logic
-✓ Stimulus files and paths
-✓ Hardware interface (PA5)
-✓ Randomization procedure
-✓ Attenuation levels
-✓ Audio scaling
-✓ Response collection
+### v3.0 = v2.0 + Professional Data Science Tools
 
-### What Improved:
-✨ Real-time visualization
-✨ Standard data formats (CSV + JSON)
-✨ Modern, accessible UI
-✨ Better code organization
-✨ Comprehensive documentation
-✨ Error handling
-✨ Easier data analysis
+| What We Kept | What We Added |
+|-------------|---------------|
+| ✅ Simple 1-file architecture | ✅ JSON & Parquet output |
+| ✅ Dual-window UI | ✅ Always-on dual windows |
+| ✅ Real-time plots | ✅ Saved visualizations |
+| ✅ Clean code | ✅ Statistical tests |
+| ✅ Backward compatible | ✅ Test mode |
+| | ✅ Stratified analysis |
+| | ✅ d-prime & bias |
+| | ✅ Auto-generated reports |
 
-### Bottom Line:
-**Same science, better tools!**
+**Bottom Line**: Same clean architecture, now with research-grade analytics and publication-ready outputs!
