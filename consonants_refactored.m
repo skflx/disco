@@ -1,312 +1,173 @@
 function results = consonants_refactored(subjID, howmany, feedback, atten)
-% CONSONANTS_REFACTORED - Modern 16-consonant recognition test with real-time visualization
-%
-% Syntax:
-%   results = consonants_refactored(subjID)
-%   results = consonants_refactored(subjID, howmany, feedback, atten)
+% CONSONANTS_REFACTORED - Consonant recognition test (Dual Window Version)
 %
 % Inputs:
 %   subjID   - Subject identifier (required)
 %   howmany  - Number of trials (default: 64)
-%   feedback - Feedback enabled: 'y' or 'n' (default: 'n')
-%   atten    - Attenuation level in dB (default: 22.0)
-%
-% Outputs:
-%   results  - Structure with experiment results and summary statistics
-%
-% Examples:
-%   consonants_refactored('S001')                    % 64 trials, no feedback
-%   consonants_refactored('S001', 64, 'y', 22.0)    % With feedback
-%
-% Features:
-%   - Modern UI with real-time accuracy plot and confusion matrix
-%   - Standardized CSV + JSON output for easy analysis
-%   - Configurable paths and settings
-%   - Better error handling and validation
-%
-% Original: consonants.m (last updated 11/23/2021)
-% Refactored: 2025-01-20
+%   feedback - 'y' or 'n' (default: 'n')
+%   atten    - Attenuation dB (default: 22.0)
 
-%% Parse and validate inputs
-if nargin < 1
-    error('Subject ID is required');
-end
+%% Parse Inputs
+if nargin < 1, error('Subject ID required'); end
 if nargin < 2, howmany = 64; end
 if nargin < 3, feedback = 'n'; end
 if nargin < 4, atten = 22.0; end
 
 feedbackEnabled = strcmpi(feedback, 'y');
+condition = input('Enter condition label (default "NS"): ', 's');
+if isempty(condition), condition = 'NS'; end
 
-%% Get condition label
-condition = input(['How do you want to label this condition?\n' ...
-    '(e.g. ear for HI or bCI (L,R,B) or device for bimodal CIHA (CI,HA,BM): '], 's');
-if isempty(condition)
-    condition = 'NS';
+% Sound path
+soundPath = 'C:/SoundFiles/Multi/Full/';
+% For compatibility with old script path handling
+if ~exist(soundPath, 'dir')
+    soundPath = 'C:/SoundFiles/Multi/'; % Fallback
+end
+if ~exist(soundPath, 'dir')
+    error('Sound path not found: %s', soundPath);
 end
 
-%% Initialize configuration
-config = ExperimentConfig('consonants', subjID);
-config.numTrials = howmany;
-config.feedbackEnabled = feedbackEnabled;
-config.attenuation = atten;
-config.condition = condition;
-config.setupPaths();
-config.validateSoundPath();
+%% Setup
+[hSubj, hTest] = ExperimentCommon.setupDualUI('Consonants', subjID);
+[PA5, PA5_2] = ExperimentCommon.initHardware(atten);
+[fid, csvPath] = ExperimentCommon.initLogFile(subjID, 'consonants', condition);
 
-fprintf('\n=== Consonant Recognition Experiment ===\n');
-fprintf('Subject: %s\n', subjID);
-fprintf('Condition: %s\n', condition);
-fprintf('Trials: %d\n', howmany);
-fprintf('Feedback: %s\n', feedback);
-fprintf('Attenuation: %.1f dB\n', atten);
-fprintf('========================================\n\n');
+fprintf(fid, 'Subject,Trial,Speaker,Consonant,Response,Correct,RT,Condition\n');
+fprintf('Started Consonants experiment for %s (%s)\n', subjID, condition);
 
-%% Initialize data logger
-logger = DataLogger(config);
-logger.initialize();
-
-%% Initialize UI
-ui = ExperimentUI(config);
-ui.initialize();
-ui.updateInstruction('Press any button to start', 'white');
-
-%% Define stimuli
+%% Stimuli
 speakers = {'ah-a', 'ct-a', 'lf-a', 'sy-a'};
 consonants = {'b', 'd', 'f', 'g', 'k', 'm', 'n', 'p', 's', 't', 'v', 'z', '#', '%', '$', '?'};
-consonantLabels = {'B', 'D', 'F', 'G', 'K', 'M', 'N', 'P', 'S', 'T', 'V', 'Z', '#', '%', '$', '?'};
+labels = {'B', 'D', 'F', 'G', 'K', 'M', 'N', 'P', 'S', 'T', 'V', 'Z', '#', '%', '$', '?'};
+numCons = length(consonants);
 
-numConsonants = length(consonants);
-numSpeakers = length(speakers);
+%% Setup Response Buttons
+resp = [];
+resp.val = 0;
+resp.ready = false;
 
-%% Initialize hardware (PA5 attenuators)
-try
-    [PA5, PA5_2] = initializeHardware(atten);
-    fprintf('Hardware initialized successfully\n');
-catch ME
-    warning('Hardware initialization failed: %s', ME.message);
-    fprintf('Continuing in test mode without hardware\n');
-    PA5 = [];
-    PA5_2 = [];
-end
-
-%% Load noise generation parameters (for compatibility, though usually not used)
-numBands = 0;  % 0 means no noise/masking (testing in quiet)
-SNR = 60;      % Very high SNR = essentially no masking
-
-% Load band division data if available
-try
-    load('banDivision.mat', 'ch12_710');
-    filtCoeff = ch12_710;
-catch
-    fprintf('banDivision.mat not found - proceeding without noise masking\n');
-    filtCoeff = [];
-end
-
-% Generate or load noise components (kept for compatibility)
-if ~isempty(filtCoeff) && numBands > 0
-    % Would generate noise here if needed
-    noiseCompo = [];
-    noiseEnv = [];
-else
-    noiseCompo = zeros(30000, 12);  % Placeholder
-    noiseEnv = ones(30000, 12) * 1e-5;
-end
-
-%% Load energy information for SNR matching
-soundPath = config.soundPath;
-try
-    load(fullfile(soundPath, 'miscInfo.mat'), 'energyTarget');
-catch
-    fprintf('Warning: miscInfo.mat not found - creating placeholder\n');
-    energyTarget = cell(numSpeakers, numConsonants);
-    for i = 1:numSpeakers
-        for j = 1:numConsonants
-            energyTarget{i, j} = 1;  % Placeholder
-        end
+    function btnClick(idx, ~)
+        resp.val = idx;
+        resp.ready = true;
     end
-end
 
-%% Randomize trial order
+btns = ExperimentCommon.createGridButtons(hSubj.panelResp, labels, @btnClick, 4, 4);
+
+%% Trial Generation
 rng('shuffle');
-totalStimuli = numConsonants * numSpeakers;  % 16 consonants * 4 speakers = 64
-trialOrder = mod(randperm(ceil(howmany)), totalStimuli) + 1;
+totalStim = numCons * length(speakers);
+trialOrder = mod(randperm(ceil(howmany)), totalStim) + 1;
 
-%% Wait for start
-pause(0.5);
-response = ui.getResponse();  % Wait for button press
-ui.updateInstruction('Starting experiment...', 'white');
-pause(1);
-
-%% Main experiment loop
+%% Main Loop
 scoreCum = 0;
+results = [];
+results.correct = [];
+results.response = [];
+results.target = [];
+
+set(hTest.txtStatus, 'String', 'Running...');
+set(hSubj.txtInstruct, 'String', 'Press any button to start');
+ExperimentCommon.waitForResponse(btns, 'on');
+while ~resp.ready, pause(0.1); end
+
 for trial = 1:howmany
+    ExperimentCommon.waitForResponse(btns, 'off');
+    resp.ready = false;
 
-    % Determine which consonant and speaker
     stimIdx = trialOrder(trial);
-    consonantID = mod(stimIdx - 1, numConsonants) + 1;
-    speakerID = floor((stimIdx - 1) / numConsonants) + 1;
+    consID = mod(stimIdx - 1, numCons) + 1;
+    spkID = floor((stimIdx - 1) / numCons) + 1;
 
-    consonantLabel = consonants{consonantID};
-    speakerLabel = speakers{speakerID};
-
-    % Load audio
-    soundFile = fullfile(soundPath, [speakerLabel consonantLabel 'a.wav']);
-
-    if ~exist(soundFile, 'file')
-        warning('Sound file not found: %s', soundFile);
-        continue;
+    fname = fullfile(soundPath, [speakers{spkID} consonants{consID} 'a.wav']);
+    if ~exist(fname, 'file')
+        % Try without 'a' suffix just in case
+        fname = fullfile(soundPath, [speakers{spkID} consonants{consID} '.wav']);
     end
 
-    [target, fs] = audioread(soundFile);
+    if exist(fname, 'file')
+        [y, fs] = audioread(fname);
+        y = y * 1.982;
 
-    % Add noise if needed (usually SNR=60 means essentially no noise)
-    if SNR < 60 && ~isempty(noiseCompo)
-        len = length(target);
-        noiseID = randi(size(noiseCompo, 1) - len - 100) + 1;
-        noiseSegment = noiseCompo(noiseID:noiseID+len-1, :);
-
-        % SNR matching would go here
-        % For now, just use target without noise
-        audioData = target;
+        % Play
+        set(hSubj.txtInstruct, 'String', 'Listen...', 'ForegroundColor', 'white');
+        drawnow;
+        pause(0.5);
+        sound(y, fs);
+        pause(length(y)/fs + 0.2);
     else
-        audioData = target;
+        warning('File not found: %s', fname);
+        y = zeros(fs,1); % Skip
     end
 
-    % Scale audio
-    audioData = audioData * 1.982;
+    % Get Response
+    set(hSubj.txtInstruct, 'String', 'Select Consonant');
+    ExperimentCommon.waitForResponse(btns, 'on');
 
-    % Update UI - Playing
-    ui.updateProgress(trial, howmany, scoreCum / max(1, trial-1));
-    ui.updateInstruction('Listen...', 'white');
-    pause(0.5);
+    tStart = tic;
+    while ~resp.ready && ishandle(hSubj.fig)
+        pause(0.05);
+    end
+    rt = toc(tStart);
 
-    % Play sound
-    sound(audioData, fs);
-    pause(length(audioData) / fs + 0.3);
+    if ~ishandle(hSubj.fig), break; end
 
-    % Collect response
-    ui.updateInstruction('Which consonant did you hear?', 'white');
-    tstart = tic;
-    responseID = ui.getResponse();
-    rt = toc(tstart);
+    % Score
+    isCorrect = (resp.val == consID);
+    scoreCum = scoreCum + isCorrect;
 
-    % Score response
-    correct = (responseID == consonantID);
-    scoreCum = scoreCum + correct;
+    results.target(end+1) = consID;
+    results.response(end+1) = resp.val;
+    results.correct(end+1) = isCorrect;
 
-    % Provide feedback if enabled
+    % Log
+    fprintf(fid, '%s,%d,%s,%s,%s,%d,%.3f,%s\n', ...
+        subjID, trial, speakers{spkID}, consonants{consID}, ...
+        consonants{resp.val}, isCorrect, rt, condition);
+
+    % Feedback
     if feedbackEnabled
-        if correct
-            ui.updateInstruction('CORRECT!', [0 1 0]);  % Green
+        if isCorrect
+            set(hSubj.txtInstruct, 'String', 'CORRECT', 'ForegroundColor', 'green');
         else
-            ui.updateInstruction(sprintf('Correct answer: %s', consonantLabels{consonantID}), [1 0.5 0]);
+            set(hSubj.txtInstruct, 'String', ['Incorrect: ' labels{consID}], 'ForegroundColor', 'red');
         end
-        pause(1.5);
+        pause(1.0);
     else
         pause(0.5);
     end
 
-    % Log trial data
-    trialData = struct(...
-        'trial', trial, ...
-        'speaker_id', speakerID, ...
-        'consonant_id', consonantID, ...
-        'response_id', responseID, ...
-        'correct', correct, ...
-        'rt_sec', rt);
-    logger.logTrial(trialData);
+    % Update Tester UI (Every 5 trials)
+    if mod(trial, 5) == 0 || trial == howmany
+        pct = (scoreCum / trial) * 100;
+        set(hTest.txtStatus, 'String', sprintf('Trial %d/%d - Acc: %.1f%%', trial, howmany, pct));
 
-    % Update plots every 4 trials (for efficiency)
-    if mod(trial, 4) == 0 || trial == howmany
-        currentAccuracy = scoreCum / trial;
-        ui.updateAccuracyPlot(trial, currentAccuracy);
+        % Plot Accuracy
+        axes(hTest.ax1);
+        plot(1:length(results.correct), cumsum(results.correct) ./ (1:length(results.correct)) * 100, 'b-o');
+        ylabel('Accuracy %'); xlabel('Trial'); title('Running Accuracy');
+        ylim([0 100]); grid on;
 
-        confMatrix = logger.computeConfusionMatrix(numConsonants);
-        ui.updateConfusionMatrix(confMatrix, consonantLabels);
-    end
-
-    % Check if UI was closed
-    if ~ui.isOpen()
-        fprintf('Experiment terminated by user\n');
-        break;
-    end
-end
-
-%% Finalize and save results
-ui.updateInstruction('Run finished. Processing results...', 'white');
-
-% Calculate summary statistics
-percentCorrect = (scoreCum / howmany) * 100;
-confusionMatrix = logger.computeConfusionMatrix(numConsonants);
-
-% Create summary structure
-summary = struct();
-summary.percent_correct = percentCorrect;
-summary.total_correct = scoreCum;
-summary.confusion_matrix = confusionMatrix;
-summary.consonant_labels = {consonantLabels};
-
-% Finalize data logging
-logger.finalize(summary);
-
-% Update final display
-ui.updateInstruction(sprintf('Experiment Complete! Score: %.1f%%', percentCorrect), [0 1 0]);
-fprintf('\n=== Experiment Complete ===\n');
-fprintf('Score: %.2f%%\n', percentCorrect);
-fprintf('See plots for detailed results\n');
-fprintf('===========================\n\n');
-
-% Return results
-results = struct();
-results.config = config;
-results.summary = summary;
-results.percentCorrect = percentCorrect;
-
-% Keep UI open for review
-fprintf('Close the figure window to finish.\n');
-waitfor(ui.figure);
-
-% Cleanup hardware
-cleanupHardware(PA5, PA5_2);
-
-end
-
-%% Helper Functions
-
-function [PA5, PA5_2] = initializeHardware(atten)
-    % Initialize TDT PA5 attenuators
-
-    PA5 = actxcontrol('PA5.x', [5 5 26 26]);
-    invoke(PA5, 'ConnectPA5', 'USB', 1);
-
-    PA5_2 = actxcontrol('PA5.x', [10 5 36 26]);
-    invoke(PA5_2, 'ConnectPA5', 'USB', 2);
-
-    % Set attenuation levels
-    PA5.SetAtten(atten);
-    errorMsg = PA5.GetError();
-    if ~isempty(errorMsg)
-        PA5.Display(errorMsg, 0);
-        error('PA5 error: %s', errorMsg);
-    end
-
-    PA5_2.SetAtten(90.0);  % Second channel muted
-    errorMsg = PA5_2.GetError();
-    if ~isempty(errorMsg)
-        PA5_2.Display(errorMsg, 0);
-    end
-end
-
-function cleanupHardware(PA5, PA5_2)
-    % Clean up hardware connections
-    try
-        if ~isempty(PA5)
-            delete(PA5);
+        % Plot Confusion
+        axes(hTest.ax2);
+        C = zeros(numCons);
+        for i = 1:length(results.target)
+            t = results.target(i);
+            r = results.response(i);
+            C(t,r) = C(t,r) + 1;
         end
-        if ~isempty(PA5_2)
-            delete(PA5_2);
-        end
-    catch
-        % Ignore cleanup errors
+        imagesc(C); colormap('hot'); colorbar;
+        set(gca, 'XTick', 1:numCons, 'XTickLabel', labels, 'YTick', 1:numCons, 'YTickLabel', labels);
+        xlabel('Response'); ylabel('Target');
     end
+end
+
+%% Finish
+fclose(fid);
+set(hSubj.txtInstruct, 'String', 'Done! Thank you.');
+pause(2);
+
+if ~isempty(PA5), delete(PA5); delete(PA5_2); end
+close(hSubj.fig);
+close(hTest.fig);
+
 end

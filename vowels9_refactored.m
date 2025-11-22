@@ -1,261 +1,160 @@
 function results = vowels9_refactored(subjID, howmany, feedback, atten)
-% VOWELS9_REFACTORED - Modern 9-vowel recognition test with real-time visualization
-%
-% Syntax:
-%   results = vowels9_refactored(subjID)
-%   results = vowels9_refactored(subjID, howmany, feedback, atten)
+% VOWELS9_REFACTORED - Vowel recognition test (Dual Window Version)
 %
 % Inputs:
 %   subjID   - Subject identifier (required)
 %   howmany  - Number of trials (default: 180)
-%   feedback - Feedback enabled: 'y' or 'n' (default: 'n')
-%   atten    - Attenuation level in dB (default: 18.0)
-%
-% Outputs:
-%   results  - Structure with experiment results and summary statistics
-%
-% Examples:
-%   vowels9_refactored('S001')                    % 180 trials, no feedback
-%   vowels9_refactored('S001', 10, 'n', 18.0)    % 10 trials for testing
-%   vowels9_refactored('S001', 180, 'y', 20.0)   % With feedback, 20dB atten
-%
-% Features:
-%   - Modern UI with real-time accuracy plot and confusion matrix
-%   - Standardized CSV + JSON output for easy analysis
-%   - Configurable paths and settings
-%   - Better error handling and validation
-%
-% Original: vowels9.m (last updated 6/10/2021)
-% Refactored: 2025-01-20
+%   feedback - 'y' or 'n' (default: 'n')
+%   atten    - Attenuation dB (default: 18.0)
 
-%% Parse and validate inputs
-if nargin < 1
-    error('Subject ID is required');
-end
+%% Parse Inputs
+if nargin < 1, error('Subject ID required'); end
 if nargin < 2, howmany = 180; end
 if nargin < 3, feedback = 'n'; end
 if nargin < 4, atten = 18.0; end
 
 feedbackEnabled = strcmpi(feedback, 'y');
+condition = input('Enter condition label (default "NS"): ', 's');
+if isempty(condition), condition = 'NS'; end
 
-%% Get condition label
-condition = input(['How do you want to label this condition?\n' ...
-    '(e.g. ear for HI or bCI (L,R,B) or device for bimodal CIHA (CI,HA,BM): '], 's');
-if isempty(condition)
-    condition = 'NS';
+% Sound path
+soundPath = 'C:/SoundFiles/Vowels/';
+if ~exist(soundPath, 'dir')
+    error('Sound path not found: %s', soundPath);
 end
 
-%% Initialize configuration
-config = ExperimentConfig('vowels', subjID);
-config.numTrials = howmany;
-config.feedbackEnabled = feedbackEnabled;
-config.attenuation = atten;
-config.condition = condition;
-config.setupPaths();
-config.validateSoundPath();
+%% Setup
+[hSubj, hTest] = ExperimentCommon.setupDualUI('Vowels', subjID);
+[PA5, PA5_2] = ExperimentCommon.initHardware(atten);
+[fid, csvPath] = ExperimentCommon.initLogFile(subjID, 'vowels', condition);
 
-fprintf('\n=== Vowel Recognition Experiment ===\n');
-fprintf('Subject: %s\n', subjID);
-fprintf('Condition: %s\n', condition);
-fprintf('Trials: %d\n', howmany);
-fprintf('Feedback: %s\n', feedback);
-fprintf('Attenuation: %.1f dB\n', atten);
-fprintf('=====================================\n\n');
+fprintf(fid, 'Subject,Trial,Speaker,Vowel,Response,Correct,RT,Condition\n');
+fprintf('Started Vowels experiment for %s (%s)\n', subjID, condition);
 
-%% Initialize data logger
-logger = DataLogger(config);
-logger.initialize();
-
-%% Initialize UI
-ui = ExperimentUI(config);
-ui.initialize();
-ui.updateInstruction('Press any button to start', 'white');
-
-%% Define stimuli
+%% Stimuli
 speakers = {'M01','M03','M06','M08','M11','M24','M30','M33','M39','M41', ...
             'W01','W04','W09','W14','W15','W23','W25','W26','W44','W47'};
-
 vowels = {'AE', 'AH', 'AW', 'EH', 'IH', 'IY', 'OO', 'UH', 'UW'};
 numVowels = length(vowels);
-numSpeakers = length(speakers);
 
-%% Initialize hardware (PA5 attenuators)
-try
-    [PA5, PA5_2] = initializeHardware(atten);
-    fprintf('Hardware initialized successfully\n');
-catch ME
-    warning('Hardware initialization failed: %s', ME.message);
-    fprintf('Continuing in test mode without hardware\n');
-    PA5 = [];
-    PA5_2 = [];
-end
+%% Setup Response Buttons
+resp = [];
+resp.val = 0;
+resp.ready = false;
 
-%% Randomize trial order
-rng('shuffle');  % Modern MATLAB random seed
-totalStimuli = numVowels * numSpeakers;  % 9 vowels * 20 speakers = 180
-trialOrder = mod(randperm(ceil(howmany)), totalStimuli) + 1;
+    function btnClick(idx, ~)
+        resp.val = idx;
+        resp.ready = true;
+    end
 
-%% Wait for start
-pause(0.5);
-response = ui.getResponse();  % Wait for button press
-ui.updateInstruction('Starting experiment...', 'white');
-pause(1);
+btns = ExperimentCommon.createGridButtons(hSubj.panelResp, vowels, @btnClick, 3, 3);
 
-%% Main experiment loop
+%% Trial Generation
+rng('shuffle');
+totalStim = numVowels * length(speakers);
+trialOrder = mod(randperm(ceil(howmany)), totalStim) + 1;
+
+%% Main Loop
 scoreCum = 0;
-for trial = 1:howmany
+results = [];
+results.correct = [];
+results.response = [];
+results.target = [];
 
-    % Determine which vowel and speaker
+set(hTest.txtStatus, 'String', 'Running...');
+ExperimentCommon.waitForResponse(btns, 'on'); % Start enabled? No, wait for sound.
+set(hSubj.txtInstruct, 'String', 'Press any button to start');
+while ~resp.ready, pause(0.1); end
+
+for trial = 1:howmany
+    % Prepare Trial
+    ExperimentCommon.waitForResponse(btns, 'off');
+    resp.ready = false;
+
     stimIdx = trialOrder(trial);
     vowelID = mod(stimIdx - 1, numVowels) + 1;
     speakerID = floor((stimIdx - 1) / numVowels) + 1;
 
-    vowelLabel = vowels{vowelID};
-    speakerLabel = speakers{speakerID};
+    fname = fullfile(soundPath, [speakers{speakerID} vowels{vowelID} '.wav']);
+    [y, fs] = audioread(fname);
+    y = y * 1.982;
 
-    % Load and prepare audio
-    soundFile = fullfile(config.soundPath, [speakerLabel vowelLabel '.wav']);
+    % Play
+    set(hSubj.txtInstruct, 'String', 'Listen...', 'ForegroundColor', 'white');
+    drawnow;
+    pause(0.5);
+    sound(y, fs);
+    pause(length(y)/fs + 0.2);
 
-    if ~exist(soundFile, 'file')
-        warning('Sound file not found: %s', soundFile);
-        continue;
+    % Get Response
+    set(hSubj.txtInstruct, 'String', 'Select Vowel');
+    ExperimentCommon.waitForResponse(btns, 'on');
+
+    tStart = tic;
+    while ~resp.ready && ishandle(hSubj.fig)
+        pause(0.05);
     end
+    rt = toc(tStart);
 
-    [audioData, fs] = audioread(soundFile);
-    audioData = audioData * 1.982;  % Original scaling factor
+    if ~ishandle(hSubj.fig), break; end
 
-    % Update UI - Playing
-    ui.updateProgress(trial, howmany, scoreCum / max(1, trial-1));
-    ui.updateInstruction('Playing...', 'white');
-    pause(0.7);
+    % Score
+    isCorrect = (resp.val == vowelID);
+    scoreCum = scoreCum + isCorrect;
 
-    % Play sound
-    sound(audioData, fs);
-    pause(length(audioData) / fs + 0.3);
+    results.target(end+1) = vowelID;
+    results.response(end+1) = resp.val;
+    results.correct(end+1) = isCorrect;
 
-    % Collect response
-    ui.updateInstruction('Which vowel did you hear?', 'white');
-    tstart = tic;
-    responseID = ui.getResponse();
-    rt = toc(tstart);
+    % Log
+    fprintf(fid, '%s,%d,%s,%s,%s,%d,%.3f,%s\n', ...
+        subjID, trial, speakers{speakerID}, vowels{vowelID}, ...
+        vowels{resp.val}, isCorrect, rt, condition);
 
-    % Score response
-    correct = (responseID == vowelID);
-    scoreCum = scoreCum + correct;
-
-    % Provide feedback if enabled
+    % Feedback
     if feedbackEnabled
-        if correct
-            ui.updateInstruction('CORRECT!', [0 1 0]);  % Green
+        if isCorrect
+            set(hSubj.txtInstruct, 'String', 'CORRECT', 'ForegroundColor', 'green');
         else
-            ui.updateInstruction(sprintf('Correct answer: %s', vowelLabel), [1 0.5 0]);  % Orange
+            set(hSubj.txtInstruct, 'String', ['Incorrect: ' vowels{vowelID}], 'ForegroundColor', 'red');
         end
-        pause(1.5);
+        pause(1.0);
     else
         pause(0.5);
     end
 
-    % Log trial data
-    trialData = struct(...
-        'trial', trial, ...
-        'speaker_id', speakerID, ...
-        'vowel_id', vowelID, ...
-        'response_id', responseID, ...
-        'correct', correct, ...
-        'rt_sec', rt);
-    logger.logTrial(trialData);
-
-    % Update plots every 5 trials (for efficiency)
+    % Update Tester UI (Every 5 trials)
     if mod(trial, 5) == 0 || trial == howmany
-        currentAccuracy = scoreCum / trial;
-        ui.updateAccuracyPlot(trial, currentAccuracy);
+        pct = (scoreCum / trial) * 100;
+        set(hTest.txtStatus, 'String', sprintf('Trial %d/%d - Acc: %.1f%%', trial, howmany, pct));
 
-        confMatrix = logger.computeConfusionMatrix(numVowels);
-        ui.updateConfusionMatrix(confMatrix, vowels);
-    end
+        % Plot Accuracy
+        axes(hTest.ax1);
+        plot(1:length(results.correct), cumsum(results.correct) ./ (1:length(results.correct)) * 100, 'b-o');
+        ylabel('Accuracy %'); xlabel('Trial'); title('Running Accuracy');
+        ylim([0 100]); grid on;
 
-    % Check if UI was closed
-    if ~ui.isOpen()
-        fprintf('Experiment terminated by user\n');
-        break;
-    end
-end
-
-%% Finalize and save results
-ui.updateInstruction('Run finished. Processing results...', 'white');
-
-% Calculate summary statistics
-percentCorrect = (scoreCum / howmany) * 100;
-confusionMatrix = logger.computeConfusionMatrix(numVowels);
-
-% Create summary structure
-summary = struct();
-summary.percent_correct = percentCorrect;
-summary.total_correct = scoreCum;
-summary.confusion_matrix = confusionMatrix;
-summary.vowel_labels = {vowels};
-
-% Finalize data logging
-logger.finalize(summary);
-
-% Update final display
-ui.updateInstruction(sprintf('Experiment Complete! Score: %.1f%%', percentCorrect), [0 1 0]);
-fprintf('\n=== Experiment Complete ===\n');
-fprintf('Score: %.2f%%\n', percentCorrect);
-fprintf('See plots for detailed results\n');
-fprintf('===========================\n\n');
-
-% Return results
-results = struct();
-results.config = config;
-results.summary = summary;
-results.percentCorrect = percentCorrect;
-
-% Keep UI open for review
-fprintf('Close the figure window to finish.\n');
-waitfor(ui.figure);
-
-% Cleanup hardware
-cleanupHardware(PA5, PA5_2);
-
-end
-
-%% Helper Functions
-
-function [PA5, PA5_2] = initializeHardware(atten)
-    % Initialize TDT PA5 attenuators
-
-    PA5 = actxcontrol('PA5.x', [5 5 26 26]);
-    invoke(PA5, 'ConnectPA5', 'USB', 1);
-
-    PA5_2 = actxcontrol('PA5.x', [10 5 36 26]);
-    invoke(PA5_2, 'ConnectPA5', 'USB', 2);
-
-    % Set attenuation levels
-    PA5.SetAtten(atten);
-    errorMsg = PA5.GetError();
-    if ~isempty(errorMsg)
-        PA5.Display(errorMsg, 0);
-        error('PA5 error: %s', errorMsg);
-    end
-
-    PA5_2.SetAtten(90.0);  % Second channel muted
-    errorMsg = PA5_2.GetError();
-    if ~isempty(errorMsg)
-        PA5_2.Display(errorMsg, 0);
-    end
-end
-
-function cleanupHardware(PA5, PA5_2)
-    % Clean up hardware connections
-    try
-        if ~isempty(PA5)
-            delete(PA5);
+        % Plot Confusion
+        axes(hTest.ax2);
+        C = zeros(numVowels);
+        for i = 1:length(results.target)
+            t = results.target(i);
+            r = results.response(i);
+            C(t,r) = C(t,r) + 1;
         end
-        if ~isempty(PA5_2)
-            delete(PA5_2);
-        end
-    catch
-        % Ignore cleanup errors
+        imagesc(C); colormap('hot'); colorbar;
+        set(gca, 'XTick', 1:numVowels, 'XTickLabel', vowels, 'YTick', 1:numVowels, 'YTickLabel', vowels);
+        xlabel('Response'); ylabel('Target');
     end
+end
+
+%% Finish
+fclose(fid);
+set(hSubj.txtInstruct, 'String', 'Done! Thank you.');
+pause(2);
+
+if ~isempty(PA5), delete(PA5); delete(PA5_2); end
+close(hSubj.fig);
+close(hTest.fig);
+
 end
